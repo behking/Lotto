@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
-import { formatEther, parseEther } from 'viem';
+import { parseEther } from 'viem';
 import sdk from '@farcaster/frame-sdk';
 
 // ثابت‌های قیمت (به دلار)
