@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from 'wagmi'; // هوک‌های جدید اضافه شدند
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
 import { parseEther } from 'viem';
@@ -14,11 +14,15 @@ const PRICES = {
 };
 
 const ETH_PRICE_USD = 3000; 
+const TARGET_CHAIN_ID = 1946; // شناسه شبکه Soneium Minato
 
 function App() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
+  const chainId = useChainId(); // دریافت شبکه فعلی کاربر
+  const { switchChainAsync } = useSwitchChain(); // متد تغییر شبکه
+
   const { writeContract, isPending, isConfirming, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
 
   const [activeTab, setActiveTab] = useState<'instant' | 'weekly' | 'biweekly' | 'monthly' | 'history'>('instant');
@@ -57,8 +61,35 @@ function App() {
     }
   }, [ticketCount, activeTab]);
 
-  const handleSpin = () => {
+  // ------------------------------------------------------
+  // تابع کمکی برای چک کردن و تغییر شبکه
+  // ------------------------------------------------------
+  const ensureNetwork = async () => {
+    if (!isConnected) return false;
+    
+    if (chainId !== TARGET_CHAIN_ID) {
+      try {
+        await switchChainAsync({ chainId: TARGET_CHAIN_ID });
+        return true;
+      } catch (error) {
+        console.error("Failed to switch network:", error);
+        return false; // کاربر درخواست تغییر شبکه را رد کرد
+      }
+    }
+    return true; // شبکه درست است
+  };
+
+  // ------------------------------------------------------
+  // اکشن‌ها (همراه با لاجیک تغییر شبکه)
+  // ------------------------------------------------------
+  const handleSpin = async () => {
+    // 1. اول شبکه را چک میکنیم
+    const isNetworkCorrect = await ensureNetwork();
+    if (!isNetworkCorrect) return; 
+
+    // 2. اگر شبکه درست بود، ادامه میدهیم
     if (!writeContract) return;
+
     const randomDeg = Math.floor(3600 + Math.random() * 3600); 
     setWheelRotation(randomDeg);
 
@@ -73,8 +104,14 @@ function App() {
     });
   };
 
-  const handleBuyTicket = () => {
+  const handleBuyTicket = async () => {
+    // 1. اول شبکه را چک میکنیم
+    const isNetworkCorrect = await ensureNetwork();
+    if (!isNetworkCorrect) return;
+
+    // 2. اگر شبکه درست بود، ادامه میدهیم
     if (!writeContract) return;
+
     let typeId = 1; 
     if (activeTab === 'biweekly') typeId = 2;
     if (activeTab === 'monthly') typeId = 3;
@@ -140,7 +177,6 @@ function App() {
                   className="wheel" 
                   style={{ transform: `rotate(${wheelRotation}deg)` }}
                 >
-                  {/* اصلاح شده: استفاده از گیومه برای متغیرهای CSS */}
                   <div className="segment" style={{ '--i': 1 } as any}><span>😢<br/>Pouch</span></div>
                   <div className="segment" style={{ '--i': 2 } as any}><span>💵<br/>$ Prize</span></div>
                   <div className="segment" style={{ '--i': 3 } as any}><span>😢<br/>Pouch</span></div>
