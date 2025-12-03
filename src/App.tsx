@@ -3,186 +3,312 @@ import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
 import { formatEther, parseEther } from 'viem';
-import sdk from '@farcaster/frame-sdk'; // ایمپورت SDK
+import sdk from '@farcaster/frame-sdk';
+
+// ثابت‌های قیمت (به دلار)
+const PRICES = {
+  INSTANT: 0.5,
+  WEEKLY: 1,
+  BIWEEKLY: 5,
+  MONTHLY: 20
+};
+
+// نرخ تبدیل فرضی (در نسخه اصلی از اوراکل خوانده می‌شود)
+const ETH_PRICE_USD = 3000; 
 
 function App() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
-  
-  const { writeContract, isPending, isConfirming, isConfirmed, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
+  const { writeContract, isPending, isConfirming, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
 
+  const [activeTab, setActiveTab] = useState<'instant' | 'weekly' | 'biweekly' | 'monthly' | 'history'>('instant');
   const [ticketCount, setTicketCount] = useState<number>(1);
-  const [activeTab, setActiveTab] = useState<'instant' | 'weekly'>('instant');
-  const [isSDKLoaded, setIsSDKLoaded] = useState(false); // وضعیت لود SDK
+  const [ethAmount, setEthAmount] = useState<string>("");
+  const [isSdkLoaded, setIsSdkLoaded] = useState(false);
+  
+  // برای گردونه
+  const [wheelRotation, setWheelRotation] = useState(0);
 
-  // --------------------------------------------------------
-  // اصلاحیه اصلی برای رفع خطای Ready
-  // --------------------------------------------------------
+  // ------------------------------------------------------
+  // 1. Farcaster SDK & Initial Load
+  // ------------------------------------------------------
   useEffect(() => {
     const load = async () => {
-      console.log("🔵 Starting Frame SDK initialization...");
-      
       try {
-        // چک می‌کنیم آیا SDK وجود دارد
-        if (!sdk || !sdk.actions) {
-          console.error("🔴 SDK or actions not found!");
-          return;
-        }
-
-        // فراخوانی Context (اختیاری ولی برای اطمینان خوب است)
-        const context = await sdk.context; 
-        console.log("🟢 Frame Context Loaded:", context);
-
-        // اعلام آمادگی به فارکستر
-        sdk.actions.ready();
-        
-        console.log("✅ sdk.actions.ready() called successfully!");
-        setIsSDKLoaded(true);
-      } catch (error) {
-        console.error("🔴 Error calling ready():", error);
+        await sdk.actions.ready();
+        setIsSdkLoaded(true);
+      } catch (e) {
+        console.error("SDK Error:", e);
+        setIsSdkLoaded(true); // Fallback for browser
       }
     };
+    if (sdk?.actions) load();
+    else setIsSdkLoaded(true);
+  }, []);
 
-    // اجرای تابع لود
-    if (sdk && !isSDKLoaded) {
-      load();
+  // محاسبه قیمت ETH بر اساس تب فعال
+  const getCurrentPriceUSD = () => {
+    switch(activeTab) {
+      case 'weekly': return PRICES.WEEKLY;
+      case 'biweekly': return PRICES.BIWEEKLY;
+      case 'monthly': return PRICES.MONTHLY;
+      default: return 0;
     }
-  }, [isSDKLoaded]);
-  // --------------------------------------------------------
+  };
 
+  // آپدیت قیمت وقتی تعداد تغییر می‌کند
+  useEffect(() => {
+    const priceUSD = getCurrentPriceUSD();
+    if (priceUSD > 0) {
+      const costInEth = (priceUSD * ticketCount) / ETH_PRICE_USD;
+      setEthAmount(costInEth.toFixed(5));
+    }
+  }, [ticketCount, activeTab]);
+
+  // هندلر تغییر دستی مقدار اتریوم
+  const handleEthInputChange = (val: string) => {
+    setEthAmount(val);
+    const priceUSD = getCurrentPriceUSD();
+    if (priceUSD > 0 && parseFloat(val) > 0) {
+      const calcTickets = Math.floor((parseFloat(val) * ETH_PRICE_USD) / priceUSD);
+      setTicketCount(calcTickets > 0 ? calcTickets : 1);
+    }
+  };
+
+  // ------------------------------------------------------
+  // 2. Actions (Spin & Buy)
+  // ------------------------------------------------------
   const handleSpin = () => {
     if (!writeContract) return;
+    // انیمیشن چرخش تصادفی
+    const randomDeg = Math.floor(5000 + Math.random() * 5000); 
+    setWheelRotation(randomDeg);
+
+    // محاسبه قیمت 50 سنت
+    const cost = (PRICES.INSTANT / ETH_PRICE_USD).toFixed(18);
+
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: lotteryAbi,
       functionName: 'spinWheel',
       args: [],
-      value: parseEther('0.0001'), 
+      value: parseEther(cost.toString()), 
     });
   };
 
   const handleBuyTicket = () => {
     if (!writeContract) return;
-    const pricePerTicket = parseEther('0.0005'); 
-    const totalCost = pricePerTicket * BigInt(ticketCount);
+    let typeId = 1; // Default Weekly
+    if (activeTab === 'biweekly') typeId = 2;
+    if (activeTab === 'monthly') typeId = 3;
 
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: lotteryAbi,
       functionName: 'buyTicket',
-      args: [1, BigInt(ticketCount)], 
-      value: totalCost,
+      args: [typeId, BigInt(ticketCount)], 
+      value: parseEther(ethAmount),
     });
   };
 
+  // ------------------------------------------------------
+  // 3. Components Helper
+  // ------------------------------------------------------
+  const renderCountdown = (days: number) => (
+    <div className="countdown-box">
+      <div className="timer-block"><span>0{days}</span><small>Days</small></div>:
+      <div className="timer-block"><span>12</span><small>Hrs</small></div>:
+      <div className="timer-block"><span>45</span><small>Min</small></div>
+    </div>
+  );
+
+  const renderDistributionBar = () => (
+    <div className="dist-bar-container">
+      <div className="dist-bar pool" style={{width: '80%'}}>80% Pool</div>
+      <div className="dist-bar treasury" style={{width: '20%'}}>20% Treasury</div>
+    </div>
+  );
+
+  if (!isSdkLoaded) return <div className="loading-screen">Loading Startale Lottery...</div>;
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-sans p-4 flex flex-col items-center">
-      
-      {/* Header */}
-      <header className="w-full max-w-md flex justify-between items-center mb-8 p-4 bg-gray-800 rounded-xl shadow-lg">
-        <h1 className="text-xl font-bold text-yellow-400">Startale Lottery 🎰</h1>
-        <div>
+    <div className="app-container">
+      <div className="glass-panel">
+        
+        {/* Header */}
+        <header className="header">
+          <div className="logo-area">
+            <h1>🎰 Startale Lotto</h1>
+            <span className="network-badge">Soneium Testnet</span>
+          </div>
           {isConnected ? (
-            <button 
-              onClick={() => disconnect()}
-              className="bg-red-500 hover:bg-red-600 text-xs px-3 py-2 rounded-lg transition"
-            >
+            <button onClick={() => disconnect()} className="wallet-btn disconnect">
               {address?.slice(0, 6)}...{address?.slice(-4)}
             </button>
           ) : (
-            <button 
-              onClick={() => connect({ connector: injected() })}
-              className="bg-blue-600 hover:bg-blue-700 text-xs px-3 py-2 rounded-lg transition font-bold"
-            >
+            <button onClick={() => connect({ connector: injected() })} className="wallet-btn connect">
               Connect Wallet
             </button>
           )}
-        </div>
-      </header>
+        </header>
 
-      {/* Main Card */}
-      <main className="w-full max-w-md bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-700">
-        
-        {/* Tabs */}
-        <div className="flex border-b border-gray-700">
-          <button 
-            onClick={() => setActiveTab('instant')}
-            className={`flex-1 py-4 text-center font-bold ${activeTab === 'instant' ? 'bg-gray-700 text-yellow-400' : 'text-gray-400 hover:bg-gray-750'}`}
-          >
-            🎡 Instant Spin
-          </button>
-          <button 
-            onClick={() => setActiveTab('weekly')}
-            className={`flex-1 py-4 text-center font-bold ${activeTab === 'weekly' ? 'bg-gray-700 text-green-400' : 'text-gray-400 hover:bg-gray-750'}`}
-          >
-            📅 Weekly Draw
-          </button>
-        </div>
+        {/* Navigation Tabs */}
+        <nav className="nav-tabs">
+          {['instant', 'weekly', 'biweekly', 'monthly', 'history'].map((tab) => (
+            <button 
+              key={tab}
+              className={`nav-item ${activeTab === tab ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab as any)}
+            >
+              {tab === 'instant' ? '🎡' : tab === 'history' ? '📜' : '🎟️'} 
+              <span className="tab-text">{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+            </button>
+          ))}
+        </nav>
 
-        {/* Content Area */}
-        <div className="p-6 flex flex-col items-center text-center space-y-6">
+        {/* Main Content */}
+        <main className="main-content">
           
-          {activeTab === 'instant' ? (
-            <>
-              <div className="text-6xl animate-bounce my-4">🎡</div>
-              <p className="text-gray-300">Win prizes or free tickets instantly!</p>
-              <div className="bg-gray-900 p-3 rounded-lg w-full">
-                <span className="text-sm text-gray-500">Cost per spin:</span>
-                <div className="text-xl font-mono text-yellow-400">0.0001 ETH</div>
-              </div>
-              <button
-                disabled={!isConnected || isPending || isConfirming}
-                onClick={handleSpin}
-                className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-400 hover:to-orange-500 text-white font-bold py-4 rounded-xl text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transform transition active:scale-95"
-              >
-                {isPending ? 'Confirming...' : isConfirming ? 'Spinning...' : 'SPIN NOW!'}
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="text-6xl my-4">🎟️</div>
-              <p className="text-gray-300">Join the weekly pool. 6 Winners!</p>
-              
-              <div className="w-full space-y-4">
-                <div className="flex justify-between text-sm text-gray-400">
-                  <span>Tickets: {ticketCount}</span>
-                  <span>Total: {formatEther(parseEther('0.0005') * BigInt(ticketCount))} ETH</span>
+          {/* --- INSTANT LOTTERY --- */}
+          {activeTab === 'instant' && (
+            <div className="tab-content fade-in">
+              <div className="wheel-container">
+                <div className="wheel-pointer">▼</div>
+                <div 
+                  className="wheel" 
+                  style={{ transform: `rotate(${wheelRotation}deg)` }}
+                >
+                  <div className="wheel-segment seg-1">$10</div>
+                  <div className="wheel-segment seg-2">Ticket</div>
+                  <div className="wheel-segment seg-3">$2</div>
+                  <div className="wheel-segment seg-4">$5</div>
                 </div>
-                <input 
-                  type="range" 
-                  min="1" 
-                  max="50" 
-                  value={ticketCount} 
-                  onChange={(e) => setTicketCount(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                />
               </div>
+              
+              <div className="info-row">
+                <span>Entry Cost:</span>
+                <span className="highlight">$0.50 ({(0.5/ETH_PRICE_USD).toFixed(5)} ETH)</span>
+              </div>
+              
+              <div className="info-text">100% goes to Prize Pool! Win instantly.</div>
 
-              <button
-                disabled={!isConnected || isPending || isConfirming}
-                onClick={handleBuyTicket}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold py-4 rounded-xl text-lg shadow-lg disabled:opacity-50 transform transition active:scale-95"
+              <button 
+                className="action-btn spin-btn"
+                disabled={!isConnected || isPending}
+                onClick={handleSpin}
               >
-                {isPending ? 'Confirming...' : 'Buy Tickets'}
+                {isPending ? 'Confirming...' : isConfirming ? 'Spinning...' : 'SPIN WHEEL!'}
               </button>
-            </>
-          )}
-
-          {/* Transaction Status */}
-          {hash && (
-            <div className="mt-4 text-xs text-gray-400 break-all bg-black bg-opacity-30 p-2 rounded">
-              Tx: <a href={`https://soneium-minato.blockscout.com/tx/${hash}`} target="_blank" rel="noreferrer" className="text-blue-400 underline">View on Explorer</a>
-              {isConfirmed && <div className="text-green-500 font-bold mt-1">✅ Transaction Confirmed!</div>}
             </div>
           )}
-          
-        </div>
-      </main>
-      
-      <footer className="mt-8 text-xs text-gray-500">
-        Startale Superstars MVP • Soneium Testnet
-      </footer>
+
+          {/* --- SCHEDULED LOTTERIES (Weekly/Bi/Monthly) --- */}
+          {(activeTab === 'weekly' || activeTab === 'biweekly' || activeTab === 'monthly') && (
+            <div className="tab-content fade-in">
+              {renderCountdown(activeTab === 'weekly' ? 3 : activeTab === 'biweekly' ? 10 : 25)}
+              
+              <div className="stats-grid">
+                <div className="stat-box">
+                  <small>Pool Size</small>
+                  <strong>2.5 ETH</strong>
+                  <small className="usd-val">~$7,500</small>
+                </div>
+                <div className="stat-box">
+                  <small>My Tickets</small>
+                  <strong>0</strong>
+                </div>
+                <div className="stat-box">
+                  <small>Winners</small>
+                  <strong>{activeTab === 'weekly' ? '6' : activeTab === 'biweekly' ? '3' : '1'}</strong>
+                </div>
+              </div>
+
+              {renderDistributionBar()}
+
+              <div className="ticket-control-panel">
+                <label>Buy Tickets (Price: ${getCurrentPriceUSD()})</label>
+                
+                <div className="slider-container">
+                  <input 
+                    type="range" min="1" max="100" 
+                    value={ticketCount}
+                    onChange={(e) => setTicketCount(parseInt(e.target.value))}
+                  />
+                  <span className="ticket-badge">{ticketCount} Tix</span>
+                </div>
+
+                <div className="manual-input">
+                  <span>Pay (ETH):</span>
+                  <input 
+                    type="number" 
+                    value={ethAmount} 
+                    onChange={(e) => handleEthInputChange(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <button 
+                className="action-btn buy-btn"
+                disabled={!isConnected || isPending}
+                onClick={handleBuyTicket}
+              >
+                {isPending ? 'Processing...' : `Buy for ${ethAmount} ETH`}
+              </button>
+
+              {/* Winners List Mockup */}
+              <div className="winners-section">
+                <h3>🏆 Last Round Winners</h3>
+                <div className="winner-row">
+                  <span>0x12...4A5B</span>
+                  <span className="win-amount">0.5 ETH</span>
+                </div>
+                {/* اگر کاربر برنده باشد */}
+                <div className="winner-row highlight-winner">
+                  <span>You (0xAB...89)</span>
+                  <button className="claim-btn-small">CLAIM</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- HISTORY --- */}
+          {activeTab === 'history' && (
+            <div className="tab-content fade-in">
+              <h3>📜 Transaction History</h3>
+              <div className="history-list">
+                <div className="history-item">
+                  <div className="h-left">
+                    <span className="h-type">Weekly Ticket</span>
+                    <span className="h-date">2024-02-20</span>
+                  </div>
+                  <div className="h-right">
+                    -0.005 ETH
+                  </div>
+                </div>
+                <div className="history-item win">
+                  <div className="h-left">
+                    <span className="h-type">Instant Win</span>
+                    <span className="h-date">2024-02-18</span>
+                  </div>
+                  <div className="h-right">
+                    +0.001 ETH
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tx Status */}
+          {hash && (
+            <div className="tx-status">
+              <a href={`https://soneium-minato.blockscout.com/tx/${hash}`} target="_blank">
+                View Transaction {isConfirming && "(Pending...)"}
+              </a>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
