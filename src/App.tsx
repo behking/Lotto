@@ -13,7 +13,6 @@ const PRICES = {
   MONTHLY: 20
 };
 
-// نرخ تبدیل فرضی (در نسخه اصلی از اوراکل خوانده می‌شود)
 const ETH_PRICE_USD = 3000; 
 
 function App() {
@@ -26,28 +25,21 @@ function App() {
   const [ticketCount, setTicketCount] = useState<number>(1);
   const [ethAmount, setEthAmount] = useState<string>("");
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
-  
-  // برای گردونه
   const [wheelRotation, setWheelRotation] = useState(0);
 
-  // ------------------------------------------------------
-  // 1. Farcaster SDK & Initial Load
-  // ------------------------------------------------------
   useEffect(() => {
     const load = async () => {
       try {
         await sdk.actions.ready();
         setIsSdkLoaded(true);
       } catch (e) {
-        console.error("SDK Error:", e);
-        setIsSdkLoaded(true); // Fallback for browser
+        setIsSdkLoaded(true);
       }
     };
     if (sdk?.actions) load();
     else setIsSdkLoaded(true);
   }, []);
 
-  // محاسبه قیمت ETH بر اساس تب فعال
   const getCurrentPriceUSD = () => {
     switch(activeTab) {
       case 'weekly': return PRICES.WEEKLY;
@@ -57,7 +49,6 @@ function App() {
     }
   };
 
-  // آپدیت قیمت وقتی تعداد تغییر می‌کند
   useEffect(() => {
     const priceUSD = getCurrentPriceUSD();
     if (priceUSD > 0) {
@@ -66,26 +57,11 @@ function App() {
     }
   }, [ticketCount, activeTab]);
 
-  // هندلر تغییر دستی مقدار اتریوم
-  const handleEthInputChange = (val: string) => {
-    setEthAmount(val);
-    const priceUSD = getCurrentPriceUSD();
-    if (priceUSD > 0 && parseFloat(val) > 0) {
-      const calcTickets = Math.floor((parseFloat(val) * ETH_PRICE_USD) / priceUSD);
-      setTicketCount(calcTickets > 0 ? calcTickets : 1);
-    }
-  };
-
-  // ------------------------------------------------------
-  // 2. Actions (Spin & Buy)
-  // ------------------------------------------------------
   const handleSpin = () => {
     if (!writeContract) return;
-    // انیمیشن چرخش تصادفی
-    const randomDeg = Math.floor(5000 + Math.random() * 5000); 
+    const randomDeg = Math.floor(3600 + Math.random() * 3600); 
     setWheelRotation(randomDeg);
 
-    // محاسبه قیمت 50 سنت
     const cost = (PRICES.INSTANT / ETH_PRICE_USD).toFixed(18);
 
     writeContract({
@@ -99,7 +75,7 @@ function App() {
 
   const handleBuyTicket = () => {
     if (!writeContract) return;
-    let typeId = 1; // Default Weekly
+    let typeId = 1; 
     if (activeTab === 'biweekly') typeId = 2;
     if (activeTab === 'monthly') typeId = 3;
 
@@ -112,9 +88,6 @@ function App() {
     });
   };
 
-  // ------------------------------------------------------
-  // 3. Components Helper
-  // ------------------------------------------------------
   const renderCountdown = (days: number) => (
     <div className="countdown-box">
       <div className="timer-block"><span>0{days}</span><small>Days</small></div>:
@@ -123,37 +96,27 @@ function App() {
     </div>
   );
 
-  const renderDistributionBar = () => (
-    <div className="dist-bar-container">
-      <div className="dist-bar pool" style={{width: '80%'}}>80% Pool</div>
-      <div className="dist-bar treasury" style={{width: '20%'}}>20% Treasury</div>
-    </div>
-  );
-
-  if (!isSdkLoaded) return <div className="loading-screen">Loading Startale Lottery...</div>;
+  if (!isSdkLoaded) return <div className="loading-screen">Loading...</div>;
 
   return (
     <div className="app-container">
       <div className="glass-panel">
         
-        {/* Header */}
         <header className="header">
           <div className="logo-area">
             <h1>🎰 Startale Lotto</h1>
-            <span className="network-badge">Soneium Testnet</span>
           </div>
           {isConnected ? (
             <button onClick={() => disconnect()} className="wallet-btn disconnect">
-              {address?.slice(0, 6)}...{address?.slice(-4)}
+              {address?.slice(0, 6)}...
             </button>
           ) : (
             <button onClick={() => connect({ connector: injected() })} className="wallet-btn connect">
-              Connect Wallet
+              Connect
             </button>
           )}
         </header>
 
-        {/* Navigation Tabs */}
         <nav className="nav-tabs">
           {['instant', 'weekly', 'biweekly', 'monthly', 'history'].map((tab) => (
             <button 
@@ -167,84 +130,65 @@ function App() {
           ))}
         </nav>
 
-        {/* Main Content */}
         <main className="main-content">
           
-          {/* --- INSTANT LOTTERY --- */}
           {activeTab === 'instant' && (
             <div className="tab-content fade-in">
-              <div className="wheel-container">
+              <div className="wheel-wrapper">
                 <div className="wheel-pointer">▼</div>
                 <div 
                   className="wheel" 
                   style={{ transform: `rotate(${wheelRotation}deg)` }}
                 >
-                  <div className="wheel-segment seg-1">$10</div>
-                  <div className="wheel-segment seg-2">Ticket</div>
-                  <div className="wheel-segment seg-3">$2</div>
-                  <div className="wheel-segment seg-4">$5</div>
+                  {/* اصلاح شده: استفاده از گیومه برای متغیرهای CSS */}
+                  <div className="segment" style={{ '--i': 1 } as any}><span>😢<br/>Pouch</span></div>
+                  <div className="segment" style={{ '--i': 2 } as any}><span>💵<br/>$ Prize</span></div>
+                  <div className="segment" style={{ '--i': 3 } as any}><span>😢<br/>Pouch</span></div>
+                  <div className="segment" style={{ '--i': 4 } as any}><span>📅<br/>Weekly</span></div>
+                  <div className="segment" style={{ '--i': 5 } as any}><span>😢<br/>Pouch</span></div>
+                  <div className="segment" style={{ '--i': 6 } as any}><span>🔄<br/>Re-Spin</span></div>
+                  <div className="segment" style={{ '--i': 7 } as any}><span>😢<br/>Pouch</span></div>
+                  <div className="segment" style={{ '--i': 8 } as any}><span>🎫<br/>Big Tix</span></div>
+                  <div className="segment" style={{ '--i': 9 } as any}><span>😢<br/>Pouch</span></div>
+                  <div className="segment" style={{ '--i': 10 } as any}><span>😢<br/>Pouch</span></div>
                 </div>
               </div>
               
               <div className="info-row">
-                <span>Entry Cost:</span>
-                <span className="highlight">$0.50 ({(0.5/ETH_PRICE_USD).toFixed(5)} ETH)</span>
+                <span>Cost: $0.50</span>
+                <span className="highlight">Win Prizes or Re-Spin!</span>
               </div>
               
-              <div className="info-text">100% goes to Prize Pool! Win instantly.</div>
-
               <button 
                 className="action-btn spin-btn"
                 disabled={!isConnected || isPending}
                 onClick={handleSpin}
               >
-                {isPending ? 'Confirming...' : isConfirming ? 'Spinning...' : 'SPIN WHEEL!'}
+                {isPending ? 'Confirming...' : isConfirming ? 'Spinning...' : 'SPIN (0.0001 ETH)'}
               </button>
             </div>
           )}
 
-          {/* --- SCHEDULED LOTTERIES (Weekly/Bi/Monthly) --- */}
           {(activeTab === 'weekly' || activeTab === 'biweekly' || activeTab === 'monthly') && (
             <div className="tab-content fade-in">
               {renderCountdown(activeTab === 'weekly' ? 3 : activeTab === 'biweekly' ? 10 : 25)}
               
-              <div className="stats-grid">
-                <div className="stat-box">
-                  <small>Pool Size</small>
-                  <strong>2.5 ETH</strong>
-                  <small className="usd-val">~$7,500</small>
-                </div>
-                <div className="stat-box">
-                  <small>My Tickets</small>
-                  <strong>0</strong>
-                </div>
-                <div className="stat-box">
-                  <small>Winners</small>
-                  <strong>{activeTab === 'weekly' ? '6' : activeTab === 'biweekly' ? '3' : '1'}</strong>
-                </div>
+              <div className="dist-bar-container">
+                <div className="dist-bar pool" style={{width: '80%'}}>80% Pool</div>
+                <div className="dist-bar treasury" style={{width: '20%'}}>20% Treasury</div>
               </div>
 
-              {renderDistributionBar()}
-
               <div className="ticket-control-panel">
-                <label>Buy Tickets (Price: ${getCurrentPriceUSD()})</label>
-                
                 <div className="slider-container">
                   <input 
-                    type="range" min="1" max="100" 
+                    type="range" min="1" max="50" 
                     value={ticketCount}
                     onChange={(e) => setTicketCount(parseInt(e.target.value))}
                   />
-                  <span className="ticket-badge">{ticketCount} Tix</span>
+                  <span className="ticket-badge">{ticketCount}</span>
                 </div>
-
-                <div className="manual-input">
-                  <span>Pay (ETH):</span>
-                  <input 
-                    type="number" 
-                    value={ethAmount} 
-                    onChange={(e) => handleEthInputChange(e.target.value)}
-                  />
+                <div className="cost-display">
+                  Total: {ethAmount || 0} ETH
                 </div>
               </div>
 
@@ -253,58 +197,31 @@ function App() {
                 disabled={!isConnected || isPending}
                 onClick={handleBuyTicket}
               >
-                {isPending ? 'Processing...' : `Buy for ${ethAmount} ETH`}
+                {isPending ? 'Processing...' : `Buy Tickets`}
               </button>
 
-              {/* Winners List Mockup */}
               <div className="winners-section">
-                <h3>🏆 Last Round Winners</h3>
+                <h3>🏆 Last Winners</h3>
                 <div className="winner-row">
                   <span>0x12...4A5B</span>
                   <span className="win-amount">0.5 ETH</span>
                 </div>
-                {/* اگر کاربر برنده باشد */}
-                <div className="winner-row highlight-winner">
-                  <span>You (0xAB...89)</span>
-                  <button className="claim-btn-small">CLAIM</button>
-                </div>
               </div>
             </div>
           )}
 
-          {/* --- HISTORY --- */}
           {activeTab === 'history' && (
             <div className="tab-content fade-in">
-              <h3>📜 Transaction History</h3>
+              <h3>📜 History</h3>
               <div className="history-list">
-                <div className="history-item">
-                  <div className="h-left">
-                    <span className="h-type">Weekly Ticket</span>
-                    <span className="h-date">2024-02-20</span>
-                  </div>
-                  <div className="h-right">
-                    -0.005 ETH
-                  </div>
-                </div>
-                <div className="history-item win">
-                  <div className="h-left">
-                    <span className="h-type">Instant Win</span>
-                    <span className="h-date">2024-02-18</span>
-                  </div>
-                  <div className="h-right">
-                    +0.001 ETH
-                  </div>
-                </div>
+                <div className="history-item"><span className="h-type">Spin</span><span>-0.0001 ETH</span></div>
               </div>
             </div>
           )}
 
-          {/* Tx Status */}
           {hash && (
             <div className="tx-status">
-              <a href={`https://soneium-minato.blockscout.com/tx/${hash}`} target="_blank">
-                View Transaction {isConfirming && "(Pending...)"}
-              </a>
+              <a href={`https://soneium-minato.blockscout.com/tx/${hash}`} target="_blank">View Tx</a>
             </div>
           )}
         </main>
