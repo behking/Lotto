@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from 'wagmi'; // هوک‌های جدید اضافه شدند
+import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from 'wagmi';
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
 import { parseEther } from 'viem';
 import sdk from '@farcaster/frame-sdk';
 
-// ثابت‌های قیمت (به دلار)
 const PRICES = {
   INSTANT: 0.5,
   WEEKLY: 1,
@@ -14,22 +13,26 @@ const PRICES = {
 };
 
 const ETH_PRICE_USD = 3000; 
-const TARGET_CHAIN_ID = 1946; // شناسه شبکه Soneium Minato
+const TARGET_CHAIN_ID = 1946; // Soneium Minato
 
 function App() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
-  const chainId = useChainId(); // دریافت شبکه فعلی کاربر
-  const { switchChainAsync } = useSwitchChain(); // متد تغییر شبکه
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
 
-  const { writeContract, isPending, isConfirming, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
+  const { writeContract, isPending, isConfirming, isConfirmed, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
 
   const [activeTab, setActiveTab] = useState<'instant' | 'weekly' | 'biweekly' | 'monthly' | 'history'>('instant');
   const [ticketCount, setTicketCount] = useState<number>(1);
   const [ethAmount, setEthAmount] = useState<string>("");
   const [isSdkLoaded, setIsSdkLoaded] = useState(false);
+  
+  // وضعیت‌های گردونه و نتیجه
   const [wheelRotation, setWheelRotation] = useState(0);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -44,17 +47,9 @@ function App() {
     else setIsSdkLoaded(true);
   }, []);
 
-  const getCurrentPriceUSD = () => {
-    switch(activeTab) {
-      case 'weekly': return PRICES.WEEKLY;
-      case 'biweekly': return PRICES.BIWEEKLY;
-      case 'monthly': return PRICES.MONTHLY;
-      default: return 0;
-    }
-  };
-
+  // محاسبه قیمت
   useEffect(() => {
-    const priceUSD = getCurrentPriceUSD();
+    const priceUSD = activeTab === 'weekly' ? PRICES.WEEKLY : activeTab === 'biweekly' ? PRICES.BIWEEKLY : activeTab === 'monthly' ? PRICES.MONTHLY : 0;
     if (priceUSD > 0) {
       const costInEth = (priceUSD * ticketCount) / ETH_PRICE_USD;
       setEthAmount(costInEth.toFixed(5));
@@ -62,39 +57,36 @@ function App() {
   }, [ticketCount, activeTab]);
 
   // ------------------------------------------------------
-  // تابع کمکی برای چک کردن و تغییر شبکه
+  // لاجیک جدید: چرخش پس از تایید تراکنش
   // ------------------------------------------------------
-  const ensureNetwork = async () => {
-    if (!isConnected) return false;
-    
-    if (chainId !== TARGET_CHAIN_ID) {
-      try {
-        await switchChainAsync({ chainId: TARGET_CHAIN_ID });
-        return true;
-      } catch (error) {
-        console.error("Failed to switch network:", error);
-        return false; // کاربر درخواست تغییر شبکه را رد کرد
-      }
+  useEffect(() => {
+    if (isConfirmed && hash && activeTab === 'instant') {
+      // 1. تراکنش تایید شد، حالا بچرخ!
+      setIsSpinning(true);
+      const randomDeg = Math.floor(3600 + Math.random() * 360); // حداقل ۱۰ دور کامل
+      setWheelRotation(randomDeg);
+
+      // 2. نمایش نتیجه بعد از ۴ ثانیه (زمان انیمیشن)
+      setTimeout(() => {
+        setIsSpinning(false);
+        setShowResultModal(true);
+      }, 4500);
     }
-    return true; // شبکه درست است
+  }, [isConfirmed, hash, activeTab]);
+
+  // ------------------------------------------------------
+  // هندلرها
+  // ------------------------------------------------------
+  const handleSwitchNetwork = () => {
+    switchChain({ chainId: TARGET_CHAIN_ID });
   };
 
-  // ------------------------------------------------------
-  // اکشن‌ها (همراه با لاجیک تغییر شبکه)
-  // ------------------------------------------------------
-  const handleSpin = async () => {
-    // 1. اول شبکه را چک میکنیم
-    const isNetworkCorrect = await ensureNetwork();
-    if (!isNetworkCorrect) return; 
-
-    // 2. اگر شبکه درست بود، ادامه میدهیم
+  const handleSpin = () => {
     if (!writeContract) return;
-
-    const randomDeg = Math.floor(3600 + Math.random() * 3600); 
-    setWheelRotation(randomDeg);
-
+    setShowResultModal(false); // ریست کردن مودال قبلی
+    
+    // فقط درخواست تراکنش ارسال می‌شود (هنوز نمی‌چرخد)
     const cost = (PRICES.INSTANT / ETH_PRICE_USD).toFixed(18);
-
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: lotteryAbi,
@@ -104,14 +96,8 @@ function App() {
     });
   };
 
-  const handleBuyTicket = async () => {
-    // 1. اول شبکه را چک میکنیم
-    const isNetworkCorrect = await ensureNetwork();
-    if (!isNetworkCorrect) return;
-
-    // 2. اگر شبکه درست بود، ادامه میدهیم
+  const handleBuyTicket = () => {
     if (!writeContract) return;
-
     let typeId = 1; 
     if (activeTab === 'biweekly') typeId = 2;
     if (activeTab === 'monthly') typeId = 3;
@@ -133,6 +119,9 @@ function App() {
     </div>
   );
 
+  // بررسی وضعیت شبکه
+  const isWrongNetwork = isConnected && chainId !== TARGET_CHAIN_ID;
+
   if (!isSdkLoaded) return <div className="loading-screen">Loading...</div>;
 
   return (
@@ -153,6 +142,16 @@ function App() {
             </button>
           )}
         </header>
+
+        {/* دکمه اجباری تغییر شبکه */}
+        {isWrongNetwork && (
+          <div className="wrong-network-banner">
+            <p>⚠️ Wrong Network</p>
+            <button onClick={handleSwitchNetwork} className="switch-btn">
+              Switch to Soneium
+            </button>
+          </div>
+        )}
 
         <nav className="nav-tabs">
           {['instant', 'weekly', 'biweekly', 'monthly', 'history'].map((tab) => (
@@ -177,30 +176,33 @@ function App() {
                   className="wheel" 
                   style={{ transform: `rotate(${wheelRotation}deg)` }}
                 >
-                  <div className="segment" style={{ '--i': 1 } as any}><span>😢<br/>Pouch</span></div>
-                  <div className="segment" style={{ '--i': 2 } as any}><span>💵<br/>$ Prize</span></div>
-                  <div className="segment" style={{ '--i': 3 } as any}><span>😢<br/>Pouch</span></div>
-                  <div className="segment" style={{ '--i': 4 } as any}><span>📅<br/>Weekly</span></div>
-                  <div className="segment" style={{ '--i': 5 } as any}><span>😢<br/>Pouch</span></div>
-                  <div className="segment" style={{ '--i': 6 } as any}><span>🔄<br/>Re-Spin</span></div>
-                  <div className="segment" style={{ '--i': 7 } as any}><span>😢<br/>Pouch</span></div>
-                  <div className="segment" style={{ '--i': 8 } as any}><span>🎫<br/>Big Tix</span></div>
-                  <div className="segment" style={{ '--i': 9 } as any}><span>😢<br/>Pouch</span></div>
-                  <div className="segment" style={{ '--i': 10 } as any}><span>😢<br/>Pouch</span></div>
+                  {/* فقط ایموجی و عدد کوتاه */}
+                  <div className="segment" style={{ '--i': 1 } as any}><span>😢</span></div>
+                  <div className="segment" style={{ '--i': 2 } as any}><span>$2</span></div>
+                  <div className="segment" style={{ '--i': 3 } as any}><span>😢</span></div>
+                  <div className="segment" style={{ '--i': 4 } as any}><span>🎟️</span></div>
+                  <div className="segment" style={{ '--i': 5 } as any}><span>😢</span></div>
+                  <div className="segment" style={{ '--i': 6 } as any}><span>🔄</span></div>
+                  <div className="segment" style={{ '--i': 7 } as any}><span>😢</span></div>
+                  <div className="segment" style={{ '--i': 8 } as any}><span>🎫</span></div>
+                  <div className="segment" style={{ '--i': 9 } as any}><span>😢</span></div>
+                  <div className="segment" style={{ '--i': 10 } as any}><span>😢</span></div>
                 </div>
               </div>
               
               <div className="info-row">
-                <span>Cost: $0.50</span>
-                <span className="highlight">Win Prizes or Re-Spin!</span>
+                <span>Entry: $0.50</span>
               </div>
               
               <button 
                 className="action-btn spin-btn"
-                disabled={!isConnected || isPending}
+                disabled={!isConnected || isPending || isConfirming || isWrongNetwork || isSpinning}
                 onClick={handleSpin}
               >
-                {isPending ? 'Confirming...' : isConfirming ? 'Spinning...' : 'SPIN (0.0001 ETH)'}
+                {isWrongNetwork ? 'Wrong Network' : 
+                 isPending ? 'Check Wallet...' : 
+                 isConfirming ? 'Waiting Block...' : 
+                 isSpinning ? 'Spinning! 🎡' : 'SPIN NOW'}
               </button>
             </div>
           )}
@@ -224,16 +226,16 @@ function App() {
                   <span className="ticket-badge">{ticketCount}</span>
                 </div>
                 <div className="cost-display">
-                  Total: {ethAmount || 0} ETH
+                  {ethAmount || 0} ETH
                 </div>
               </div>
 
               <button 
                 className="action-btn buy-btn"
-                disabled={!isConnected || isPending}
+                disabled={!isConnected || isPending || isWrongNetwork}
                 onClick={handleBuyTicket}
               >
-                {isPending ? 'Processing...' : `Buy Tickets`}
+                {isWrongNetwork ? 'Switch Network' : isPending ? 'Processing...' : `Buy Tickets`}
               </button>
 
               <div className="winners-section">
@@ -248,19 +250,30 @@ function App() {
 
           {activeTab === 'history' && (
             <div className="tab-content fade-in">
-              <h3>📜 History</h3>
+              <h3>📜 Your History</h3>
               <div className="history-list">
+                {/* اینجا در آینده از گراف یا ایونت‌ها پر می‌شود */}
                 <div className="history-item"><span className="h-type">Spin</span><span>-0.0001 ETH</span></div>
               </div>
             </div>
           )}
-
-          {hash && (
-            <div className="tx-status">
-              <a href={`https://soneium-minato.blockscout.com/tx/${hash}`} target="_blank">View Tx</a>
-            </div>
-          )}
         </main>
+
+        {/* POPUP RESULT MODAL */}
+        {showResultModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h2>🎉 Spin Complete!</h2>
+              <div className="result-emoji">🎁</div>
+              <p>Transaction confirmed on blockchain.</p>
+              <p className="small-text">Check the <b>History</b> tab or your wallet to see if you won!</p>
+              <button onClick={() => setShowResultModal(false)} className="close-btn">
+                Close & Spin Again
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
