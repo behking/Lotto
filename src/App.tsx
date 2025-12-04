@@ -57,27 +57,31 @@ function App() {
 
   const getRoundData = useCallback(() => {
     if (activeTab === 'weekly' && weeklyDetails) {
+      // Fix: Cast to any or tuple type to allow numerical indexing
+      const details = weeklyDetails as any;
       return {
-        endTime: Number(weeklyDetails[0]),
-        pool: weeklyDetails[1],
-        participants: Number(weeklyDetails[2]),
-        ticketPrice: weeklyDetails[3]
+        endTime: Number(details[0]),
+        pool: details[1],
+        participants: Number(details[2]),
+        ticketPrice: details[3]
       };
     }
     if (activeTab === 'biweekly' && biweeklyDetails) {
+      const details = biweeklyDetails as any;
       return {
-        endTime: Number(biweeklyDetails[0]),
-        pool: biweeklyDetails[1],
-        participants: Number(biweeklyDetails[2]),
-        ticketPrice: biweeklyDetails[3]
+        endTime: Number(details[0]),
+        pool: details[1],
+        participants: Number(details[2]),
+        ticketPrice: details[3]
       };
     }
     if (activeTab === 'monthly' && monthlyDetails) {
+      const details = monthlyDetails as any;
       return {
-        endTime: Number(monthlyDetails[0]),
-        pool: monthlyDetails[1],
-        participants: Number(monthlyDetails[2]),
-        ticketPrice: monthlyDetails[3]
+        endTime: Number(details[0]),
+        pool: details[1],
+        participants: Number(details[2]),
+        ticketPrice: details[3]
       };
     }
     return null;
@@ -204,7 +208,7 @@ function App() {
 
   const handleSpin = async () => {
     if (!await ensureNetwork()) return; 
-    if (!writeContract) return;
+    if (!writeContract || !address) return; // Fix: Check for address
 
     setShowResultModal(false);
     setWinDetails(null);
@@ -216,24 +220,26 @@ function App() {
       functionName: 'spinWheel',
       args: [],
       value: parseEther(cost.toString()), 
+      account: address, // Fix: Added account property
     });
   };
 
   const handleClaim = async () => {
     if (!await ensureNetwork()) return;
-    if (!writeContract) return;
+    if (!writeContract || !address) return; // Fix: Check for address
     writeContract({
       address: CONTRACT_ADDRESS,
       abi: lotteryAbi,
       functionName: 'claimPrize',
       args: [],
+      account: address, // Fix: Added account property
     });
     setShowResultModal(false);
   };
 
   const handleBuyTicket = async () => {
     if (!await ensureNetwork()) return;
-    if (!writeContract) return;
+    if (!writeContract || !address) return; // Fix: Check for address
     
     const typeId = LOTTERY_TYPE_MAP[activeTab] || 1;
 
@@ -243,6 +249,7 @@ function App() {
       functionName: 'buyTicket',
       args: [typeId, BigInt(ticketCount)], 
       value: parseEther(ethAmount),
+      account: address, // Fix: Added account property
     });
   };
 
@@ -301,6 +308,9 @@ function App() {
     );
   }
 
+  // Fix: Cast claimableAmount to bigint for safe comparison and formatting
+  const safeClaimableAmount = claimableAmount as unknown as bigint;
+
   return (
     <div className="app-container">
       <div className="glass-panel">
@@ -331,21 +341,26 @@ function App() {
           </div>
         )}
 
-        {claimableAmount && claimableAmount > 0n && (
-          <div className="claim-banner">
-            <div className="claim-info">
-              <span className="money-icon">💰</span>
-              <div>
-                <p className="claim-title">Pending Winnings</p>
-                <p className="claim-amount">{Number(formatEther(claimableAmount)).toFixed(6)} ETH</p>
-                <p className="claim-usd">≈ ${(Number(formatEther(claimableAmount)) * ethPriceUsd).toFixed(2)}</p>
-              </div>
-            </div>
-            <button onClick={handleClaim} className="claim-btn-inline pulse-anim" disabled={isPending}>
-              CLAIM NOW
-            </button>
-          </div>
-        )}
+        {safeClaimableAmount > 0n && (
+  <div className="claim-banner">
+    <div className="claim-info">
+      <span className="money-icon">💰</span>
+      <div>
+        <p className="claim-title">Pending Winnings</p>
+        <p className="claim-amount">
+          {Number(formatEther(safeClaimableAmount)).toFixed(6)} ETH
+        </p>
+        <p className="claim-usd">
+          ≈ ${(Number(formatEther(safeClaimableAmount)) * ethPriceUsd).toFixed(2)}
+        </p>
+      </div>
+    </div>
+    <button onClick={handleClaim} className="claim-btn-inline pulse-anim" disabled={isPending}>
+      CLAIM NOW
+    </button>
+  </div>
+)}
+
 
         <nav className="nav-tabs">
           {(['instant', 'weekly', 'biweekly', 'monthly', 'history'] as TabType[]).map((tab) => (
