@@ -1,20 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain, useReadContract, useWatchContractEvent } from 'wagmi';
+import { useAccount, useConnect, useDisconnect, useChainId, useReadContract, useWatchContractEvent } from 'wagmi'; // useSwitchChain حذف شد
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
 import { parseEther, formatEther } from 'viem';
 import sdk from '@farcaster/frame-sdk';
+import { switchToSoneium } from './wagmi'; // <--- ایمپورت تابع دستی جدید
 
 const PRICES = { INSTANT: 0.5, WEEKLY: 1, BIWEEKLY: 5, MONTHLY: 20 };
 const ETH_PRICE_USD = 3000; 
-const TARGET_CHAIN_ID = 1946; // Soneium Minato
+const TARGET_CHAIN_ID = 1946;
 
 function App() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
-  const { switchChainAsync } = useSwitchChain();
+  // const { switchChain } = useSwitchChain(); // <--- این دیگر لازم نیست
 
   const { writeContract, isPending, isConfirming, isConfirmed, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
 
@@ -32,13 +33,12 @@ function App() {
 
   const processedHash = useRef<string | null>(null);
 
-  // Read Claimable Amount
-  // FIX 1: Add type assertion or fallback for address
+  // Read Claimable
   const { data: claimableAmount, refetch: refetchClaim } = useReadContract({
     address: CONTRACT_ADDRESS,
     abi: lotteryAbi,
     functionName: 'pendingWinnings',
-    args: [address as `0x${string}`], // TS Fix: Cast address
+    args: [address as `0x${string}`],
     query: { enabled: !!address, refetchInterval: 5000 }
   });
 
@@ -51,7 +51,7 @@ function App() {
     if (sdk?.actions) load(); else setIsSdkLoaded(true);
   }, []);
 
-  // Listen for Win Events
+  // Events
   useWatchContractEvent({
     address: CONTRACT_ADDRESS,
     abi: lotteryAbi,
@@ -67,7 +67,7 @@ function App() {
     },
   });
 
-  // Spin Logic
+  // Spin Animation Logic
   useEffect(() => {
     if (isConfirmed && hash && hash !== processedHash.current && activeTab === 'instant') {
       processedHash.current = hash; 
@@ -90,31 +90,18 @@ function App() {
     if (priceUSD > 0) setEthAmount(((priceUSD * ticketCount) / ETH_PRICE_USD).toFixed(5));
   }, [ticketCount, activeTab]);
 
-  // Network Switcher
-  // Network Switcher (نسخه قدرتمند)
+  // --- Network Switcher (با استفاده از تابع دستی جدید) ---
   const ensureNetwork = async () => {
-    if (!isConnected) {
-      // اگر وصل نیست، اول وصل شو
-      connect({ connector: injected() });
-      return false;
-    }
-
     if (chainId !== TARGET_CHAIN_ID) {
-      try {
-        // تلاش برای تغییر شبکه
-        await switchChainAsync({ chainId: TARGET_CHAIN_ID });
-        return true;
-      } catch (error: any) {
-        console.error("Switch Error:", error);
-        // اگر ارور داد، یعنی کاربر رد کرده یا مشکلی هست
-        return false; 
-      }
+      // استفاده از تابع دستی که مستقیم با window.ethereum کار می کند
+      const success = await switchToSoneium();
+      return success;
     }
     return true;
   };
 
   const handleSpin = async () => {
-    if (!await ensureNetwork()) return;
+    if (!await ensureNetwork()) return; // اگر سوییچ نشد، ادامه نده
     if (!writeContract) return;
 
     setShowResultModal(false);
@@ -174,6 +161,14 @@ function App() {
           )}
         </header>
 
+        {/* دکمه سوییچ دستی در صورت اشتباه بودن شبکه */}
+        {isConnected && chainId !== TARGET_CHAIN_ID && (
+          <div className="wrong-network-banner">
+             <p>⚠️ Wrong Network</p>
+             <button onClick={switchToSoneium} className="switch-btn">Switch to Soneium</button>
+          </div>
+        )}
+
         <nav className="nav-tabs">
           {['instant', 'weekly', 'biweekly', 'monthly', 'history'].map((tab) => (
             <button 
@@ -217,7 +212,6 @@ function App() {
                   {isSpinning ? 'Spinning...' : isPending ? 'Check Wallet...' : 'SPIN NOW'}
                 </button>
 
-                {/* FIX 2: Safe BigInt conditional rendering */}
                 {claimableAmount && claimableAmount > 0n ? (
                   <button onClick={handleClaim} className="action-btn claim-btn pulse-anim">
                     💰 CLAIM {Number(formatEther(claimableAmount)).toFixed(4)} ETH
@@ -266,7 +260,6 @@ function App() {
                   <div className="result-emoji">🎁</div>
                   <p className="win-text">You Won: <span className="highlight">{winDetails.type}</span></p>
                   <p className="small-text">Value: {parseFloat(winDetails.amount).toFixed(5)} ETH</p>
-                  
                   <button onClick={handleClaim} className="action-btn claim-btn mt-2">
                     💰 CLAIM NOW
                   </button>
@@ -282,7 +275,6 @@ function App() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
