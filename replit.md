@@ -131,7 +131,7 @@ npm run lint
   - Improved wheel design with glow effects and center hub
   - Added countdown timer for scheduled lotteries
   - Added pool balance, participant count, and potential winnings display
-  - Added ETH/USD conversion throughout
+  - **Live ETH/USD pricing** via CoinGecko API with 1-minute refresh interval
   - Added ticket slider with manual ETH input
   - Added visual 80/20 distribution bar
   - Added payment history tab
