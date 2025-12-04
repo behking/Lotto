@@ -56,7 +56,7 @@ function App() {
     address: CONTRACT_ADDRESS,
     abi: lotteryAbi,
     eventName: 'SpinResult',
-    onLogs(logs) {
+    onLogs(logs: any[]) {
       const event = logs[0] as any;
       if (event.args.player === address) {
         setWinDetails({
