@@ -91,12 +91,24 @@ function App() {
   }, [ticketCount, activeTab]);
 
   // Network Switcher
+  // Network Switcher (نسخه قدرتمند)
   const ensureNetwork = async () => {
+    if (!isConnected) {
+      // اگر وصل نیست، اول وصل شو
+      connect({ connector: injected() });
+      return false;
+    }
+
     if (chainId !== TARGET_CHAIN_ID) {
       try {
+        // تلاش برای تغییر شبکه
         await switchChainAsync({ chainId: TARGET_CHAIN_ID });
         return true;
-      } catch (e) { return false; }
+      } catch (error: any) {
+        console.error("Switch Error:", error);
+        // اگر ارور داد، یعنی کاربر رد کرده یا مشکلی هست
+        return false; 
+      }
     }
     return true;
   };

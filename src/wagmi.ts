@@ -1,26 +1,31 @@
 import { http, createConfig } from "wagmi";
 import { injected } from "wagmi/connectors";
+import { type Chain } from "viem";
 
-// Soneium Minato Testnet Definition
-const soneiumMinato = {
+// تعریف دقیق شبکه Soneium Minato طبق داکیومنت
+const soneiumMinato: Chain = {
   id: 1946,
   name: 'Soneium Minato',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  nativeCurrency: { 
+    name: 'Sepolia Ether', 
+    symbol: 'ETH', 
+    decimals: 18 
+  },
   rpcUrls: {
     default: { http: ['https://rpc.minato.soneium.org'] },
+    public: { http: ['https://rpc.minato.soneium.org'] },
   },
   blockExplorers: {
-    default: { name: 'Soneium Minato Explorer', url: 'https://soneium-minato.blockscout.com' },
+    default: { name: 'Blockscout', url: 'https://soneium-minato.blockscout.com' },
   },
   testnet: true,
-} as const;
+};
 
 export const config = createConfig({
-  chains: [soneiumMinato],
+  chains: [soneiumMinato], // فقط این شبکه را مجاز می‌دانیم
   connectors: [
-    // تنظیمات حیاتی برای کار کردن در موبایل و فریم‌های فارکستر
     injected({ 
-        target: 'metaMask',
+        target: 'metaMask', // این خط برای کارکرد صحیح در موبایل/فارکستر مهم است
         shimDisconnect: true 
     }),
   ],
