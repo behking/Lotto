@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAccount, useConnect, useDisconnect, useChainId, useReadContract, useWatchContractEvent } from 'wagmi'; // useSwitchChain حذف شد
+import { useAccount, useConnect, useDisconnect, useChainId, useReadContract, useWatchContractEvent, useSwitchChain } from 'wagmi';
 import { injected } from 'wagmi/connectors';
 import { useLotteryContract } from './hooks/useTaskContract';
 import { parseEther, formatEther } from 'viem';
 import sdk from '@farcaster/frame-sdk';
-import { switchToSoneium } from './wagmi'; // <--- ایمپورت تابع دستی جدید
+// Removed manual switchToSoneium import as we use the hook now
 
 const PRICES = { INSTANT: 0.5, WEEKLY: 1, BIWEEKLY: 5, MONTHLY: 20 };
 const ETH_PRICE_USD = 3000; 
@@ -15,7 +15,7 @@ function App() {
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
-  // const { switchChain } = useSwitchChain(); // <--- این دیگر لازم نیست
+  const { switchChainAsync } = useSwitchChain(); // Re-enabled switchChain hook
 
   const { writeContract, isPending, isConfirming, isConfirmed, hash, lotteryAbi, CONTRACT_ADDRESS } = useLotteryContract();
 
@@ -90,18 +90,23 @@ function App() {
     if (priceUSD > 0) setEthAmount(((priceUSD * ticketCount) / ETH_PRICE_USD).toFixed(5));
   }, [ticketCount, activeTab]);
 
-  // --- Network Switcher (با استفاده از تابع دستی جدید) ---
+  // --- Network Switcher (using Wagmi hook) ---
   const ensureNetwork = async () => {
     if (chainId !== TARGET_CHAIN_ID) {
-      // استفاده از تابع دستی که مستقیم با window.ethereum کار می کند
-      const success = await switchToSoneium();
-      return success;
+      try {
+        await switchChainAsync({ chainId: TARGET_CHAIN_ID });
+        // After await, chain should be switched.
+        return true;
+      } catch (error) {
+        console.error("Failed to switch network:", error);
+        return false;
+      }
     }
     return true;
   };
 
   const handleSpin = async () => {
-    if (!await ensureNetwork()) return; // اگر سوییچ نشد، ادامه نده
+    if (!await ensureNetwork()) return; 
     if (!writeContract) return;
 
     setShowResultModal(false);
@@ -161,11 +166,11 @@ function App() {
           )}
         </header>
 
-        {/* دکمه سوییچ دستی در صورت اشتباه بودن شبکه */}
+        {/* Improved switch button */}
         {isConnected && chainId !== TARGET_CHAIN_ID && (
           <div className="wrong-network-banner">
              <p>⚠️ Wrong Network</p>
-             <button onClick={switchToSoneium} className="switch-btn">Switch to Soneium</button>
+             <button onClick={ensureNetwork} className="switch-btn">Switch to Soneium</button>
           </div>
         )}
 
